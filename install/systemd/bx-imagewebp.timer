@@ -1,0 +1,12 @@
+[Unit]
+Description=Run bx.imagewebp worker periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=bx-imagewebp.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Bitrix bx.imagewebp queue worker (oneshot)
+After=network.target mysql.service mariadb.service
+
+[Service]
+Type=oneshot
+User=bitrix
+Group=bitrix
+Nice=10
+# Replace DOCUMENT_ROOT with the site absolute path, e.g. /home/bitrix/www
+WorkingDirectory=/path/to/DOCUMENT_ROOT
+ExecStart=/usr/bin/php -f /path/to/DOCUMENT_ROOT/local/modules/bx.imagewebp/tools/worker.php -- --batches=3
+# Do not treat lock-busy (exit 2) as unit failure when overlapping with agent
+SuccessExitStatus=0 2
+
+[Install]
+WantedBy=multi-user.target
