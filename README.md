@@ -57,7 +57,7 @@ git submodule update --init --recursive
 
 Рекомендуется Imagick (`main.imageEngine` → `\Bitrix\Main\File\Image\Imagick` в `/bitrix/.settings.php`). На VMBitrix: `Manage PHP extensions` → Enable imagick.
 
-Проверка окружения отображается на странице настроек модуля.
+Проверка окружения отображается на странице настроек модуля. Imagick WEBP считается доступным, если `Imagick::queryFormats('WEBP')` содержит `WEBP` среди ключей **или** среди значений (оба варианта встречаются в разных сборках); в диагностике выводятся флаги `imagick-webp-key` / `imagick-webp-value` и итоговый `imagick-webp`.
 
 ---
 
