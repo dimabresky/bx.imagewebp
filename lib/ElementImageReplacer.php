@@ -140,6 +140,10 @@ final class ElementImageReplacer
     }
 
     /**
+     * Replace a single multiple-file property value by PROPERTY_VALUE_ID.
+     * Do not re-submit sibling FILE_ID integers: iblock file handler assigns
+     * VALUE["MODULE_ID"] and fatals on scalar VALUE ("Cannot use a scalar value as an array").
+     *
      * @param array<string,mixed> $fileArray
      */
     private static function replaceProperty(
@@ -149,25 +153,15 @@ final class ElementImageReplacer
         int $propertyValueId,
         array $fileArray
     ): void {
-        $values = [];
+        $description = '';
         $found = false;
         $res = CIBlockElement::GetProperty($iblockId, $elementId, ['sort' => 'asc'], ['CODE' => $propCode]);
         while ($row = $res->Fetch()) {
             $valueId = (int)($row['PROPERTY_VALUE_ID'] ?? 0);
-            if ($valueId <= 0) {
-                continue;
-            }
             if ($valueId === $propertyValueId) {
-                $values[$valueId] = [
-                    'VALUE' => $fileArray,
-                    'DESCRIPTION' => (string)($row['DESCRIPTION'] ?? ''),
-                ];
+                $description = (string)($row['DESCRIPTION'] ?? '');
                 $found = true;
-            } else {
-                $values[$valueId] = [
-                    'VALUE' => (int)($row['VALUE'] ?? 0),
-                    'DESCRIPTION' => (string)($row['DESCRIPTION'] ?? ''),
-                ];
+                break;
             }
         }
 
@@ -177,6 +171,13 @@ final class ElementImageReplacer
             );
         }
 
-        CIBlockElement::SetPropertyValuesEx($elementId, $iblockId, [$propCode => $values]);
+        CIBlockElement::SetPropertyValuesEx($elementId, $iblockId, [
+            $propCode => [
+                $propertyValueId => [
+                    'VALUE' => $fileArray,
+                    'DESCRIPTION' => $description,
+                ],
+            ],
+        ]);
     }
 }
