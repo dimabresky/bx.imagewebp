@@ -3,6 +3,7 @@
 namespace Bx\ImageWebp;
 
 use Bitrix\Main\File\Image;
+use Bitrix\Main\File\Image\Gd;
 use Bitrix\Main\File\Image\Rectangle;
 use CFile;
 
@@ -45,12 +46,20 @@ final class Converter
 
         $baseName = pathinfo((string)($file['ORIGINAL_NAME'] ?? $file['FILE_NAME'] ?? 'image'), PATHINFO_FILENAME);
         $baseName = preg_replace('/[^a-zA-Z0-9_\-]+/u', '_', (string)$baseName) ?: 'image';
-        $destName = $baseName . '_' . $fileId . '.webp';
+        $destName = $baseName . '_' . $fileId . '_' . str_replace('.', '', uniqid('', true)) . '.webp';
         $destPath = $workDir . '/' . $destName;
+
+        $srcMeta = sprintf(
+            'mime=%s wxh=%sx%s src_size=%d',
+            (string)($file['CONTENT_TYPE'] ?? ''),
+            (string)($file['WIDTH'] ?? '0'),
+            (string)($file['HEIGHT'] ?? '0'),
+            (int)filesize($srcPath)
+        );
 
         $image = new Image($srcPath);
         if (!$image->load()) {
-            throw new \RuntimeException('Failed to load image: ' . $srcPath);
+            throw new \RuntimeException('Failed to load image: ' . $srcPath . ' (' . $srcMeta . ')');
         }
 
         try {
@@ -70,20 +79,49 @@ final class Converter
                 }
             }
 
+            self::ensureGdTruecolor($image);
+
             if (!$image->saveAs($destPath, Config::getQuality(), Image::FORMAT_WEBP)) {
-                throw new \RuntimeException('Failed to save WebP: ' . $destPath);
+                throw new \RuntimeException('Failed to save WebP: ' . $destPath . ' (' . $srcMeta . ')');
             }
         } finally {
             $image->clear();
         }
 
         if (!is_file($destPath) || filesize($destPath) <= 0) {
-            throw new \RuntimeException('WebP output is empty: ' . $destPath);
+            throw new \RuntimeException('WebP output is empty: ' . $destPath . ' (' . $srcMeta . ')');
         }
 
         return [
             'path' => $destPath,
             'name' => $destName,
         ];
+    }
+
+    /**
+     * GD imagewebp() can return true and write a 0-byte file for palette images.
+     * Convert to truecolor before FORMAT_WEBP save when the engine is Gd.
+     */
+    private static function ensureGdTruecolor(Image $image): void
+    {
+        if (!function_exists('imagepalettetotruecolor') || !function_exists('imageistruecolor')) {
+            return;
+        }
+
+        $engineProp = new \ReflectionProperty(Image::class, 'engine');
+        $engineProp->setAccessible(true);
+        $engine = $engineProp->getValue($image);
+        if (!$engine instanceof Gd) {
+            return;
+        }
+
+        $resource = $engine->getResource();
+        if ($resource === null) {
+            return;
+        }
+
+        if (!imageistruecolor($resource)) {
+            imagepalettetotruecolor($resource);
+        }
     }
 }

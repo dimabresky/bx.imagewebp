@@ -44,11 +44,16 @@ final class Worker
 
         try {
             $batches = max(1, $batches);
+            /** @var list<int> $excludeIds jobs failed in this process — retry on next worker run */
+            $excludeIds = [];
             for ($i = 0; $i < $batches; $i++) {
-                $batchStats = self::processBatch();
+                $batchStats = self::processBatch($excludeIds);
                 $stats['processed'] += $batchStats['processed'];
                 $stats['success'] += $batchStats['success'];
                 $stats['failed'] += $batchStats['failed'];
+                foreach ($batchStats['failed_ids'] as $failedId) {
+                    $excludeIds[] = $failedId;
+                }
                 if ($batchStats['processed'] === 0) {
                     break;
                 }
@@ -62,12 +67,19 @@ final class Worker
     }
 
     /**
-     * @return array{processed:int,success:int,failed:int}
+     * @param list<int> $excludeIds
+     *
+     * @return array{processed:int,success:int,failed:int,failed_ids:list<int>}
      */
-    private static function processBatch(): array
+    private static function processBatch(array $excludeIds = []): array
     {
-        $stats = ['processed' => 0, 'success' => 0, 'failed' => 0];
+        $stats = ['processed' => 0, 'success' => 0, 'failed' => 0, 'failed_ids' => []];
         $maxAttempts = Config::getMaxAttempts();
+
+        $filter = ['=STATUS' => QueueTable::STATUS_PENDING];
+        if ($excludeIds !== []) {
+            $filter['!@ID'] = $excludeIds;
+        }
 
         $result = QueueTable::getList([
             'select' => [
@@ -80,7 +92,7 @@ final class Worker
                 'FILE_ID',
                 'ATTEMPTS',
             ],
-            'filter' => ['=STATUS' => QueueTable::STATUS_PENDING],
+            'filter' => $filter,
             'order' => ['ID' => 'ASC'],
             'limit' => Config::getBatchSize(),
         ]);
@@ -109,7 +121,12 @@ final class Worker
                 $stats['success']++;
             } catch (\Throwable $e) {
                 $attempts++;
-                $error = $e->getMessage();
+                $error = sprintf(
+                    '%s in %s:%d',
+                    $e->getMessage(),
+                    $e->getFile(),
+                    $e->getLine()
+                );
                 Logger::error(sprintf(
                     'job #%d element=%d file=%d: %s',
                     $id,
@@ -127,6 +144,7 @@ final class Worker
                     'DATE_UPDATE' => new DateTime(),
                 ]);
                 $stats['failed']++;
+                $stats['failed_ids'][] = $id;
             }
         }
 
